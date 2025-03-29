@@ -7,7 +7,9 @@ def check_env():
     if version.parse(torch.version.cuda) < version.parse("11.3"):
         # https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/cudagraph.html
         raise RuntimeError("NCCL CUDA Graph support requires CUDA 11.3 or above")
-    if version.parse(version.parse(torch.__version__).base_version) < version.parse("2.2.0"):
+    if version.parse(version.parse(torch.__version__).base_version) < version.parse(
+        "2.2.0"
+    ):
         # https://pytorch.org/blog/accelerating-pytorch-with-cuda-graphs/
         raise RuntimeError(
             "CUDAGraph with NCCL support requires PyTorch 2.2.0 or above. "
@@ -30,7 +32,7 @@ class DistriConfig:
         warmup_steps: int = 4,
         comm_checkpoint: int = 60,
         mode: str = "corrected_async_gn",
-        use_cuda_graph: bool = True,
+        use_cuda_graph: bool = False,
         parallelism: str = "patch",
         split_scheme: str = "row",
         verbose: bool = False,
@@ -44,7 +46,9 @@ class DistriConfig:
         except Exception as e:
             rank = 0
             world_size = 1
-            print(f"Failed to initialize process group: {e}, falling back to single GPU")
+            print(
+                f"Failed to initialize process group: {e}, falling back to single GPU"
+            )
 
         assert is_power_of_2(world_size)
         check_env()
@@ -86,7 +90,11 @@ class DistriConfig:
         if do_classifier_free_guidance and split_batch and world_size >= 2:
             batch_groups = []
             for i in range(2):
-                batch_groups.append(dist.new_group(list(range(i * (world_size // 2), (i + 1) * (world_size // 2)))))
+                batch_groups.append(
+                    dist.new_group(
+                        list(range(i * (world_size // 2), (i + 1) * (world_size // 2)))
+                    )
+                )
             batch_group = batch_groups[self.batch_idx()]
             split_groups = []
             for i in range(world_size // 2):
@@ -128,7 +136,10 @@ class PatchParallelismCommManager:
         self.handles = None
 
     def register_tensor(
-        self, shape: tuple[int, ...] or list[int], torch_dtype: torch.dtype, layer_type: str = None
+        self,
+        shape: tuple[int, ...] or list[int],
+        torch_dtype: torch.dtype,
+        layer_type: str = None,
     ) -> int:
         if self.torch_dtype is None:
             self.torch_dtype = torch_dtype
@@ -158,13 +169,18 @@ class PatchParallelismCommManager:
                 print(f"  {layer_type}: {numel / 1e6:.3f}M parameters")
 
         self.buffer_list = [
-            torch.empty(self.numel, dtype=self.torch_dtype, device=self.distri_config.device)
+            torch.empty(
+                self.numel, dtype=self.torch_dtype, device=self.distri_config.device
+            )
             for _ in range(self.distri_config.n_device_per_batch)
         ]
         self.handles = [None for _ in range(len(self.starts))]
 
     def get_buffer_list(self, idx: int) -> list[torch.Tensor]:
-        buffer_list = [t[self.starts[idx] : self.ends[idx]].view(self.shapes[idx]) for t in self.buffer_list]
+        buffer_list = [
+            t[self.starts[idx] : self.ends[idx]].view(self.shapes[idx])
+            for t in self.buffer_list
+        ]
         return buffer_list
 
     def communicate(self):
@@ -173,7 +189,9 @@ class PatchParallelismCommManager:
         end = self.ends[self.idx_queue[-1]]
         tensor = self.buffer_list[distri_config.split_idx()][start:end]
         buffer_list = [t[start:end] for t in self.buffer_list]
-        handle = dist.all_gather(buffer_list, tensor, group=self.distri_config.batch_group, async_op=True)
+        handle = dist.all_gather(
+            buffer_list, tensor, group=self.distri_config.batch_group, async_op=True
+        )
         for i in self.idx_queue:
             self.handles[i] = handle
         self.idx_queue = []
@@ -184,7 +202,9 @@ class PatchParallelismCommManager:
             self.communicate()
         assert len(self.idx_queue) == 0 or self.idx_queue[-1] == idx - 1
         self.idx_queue.append(idx)
-        self.buffer_list[distri_config.split_idx()][self.starts[idx] : self.ends[idx]].copy_(tensor.flatten())
+        self.buffer_list[distri_config.split_idx()][
+            self.starts[idx] : self.ends[idx]
+        ].copy_(tensor.flatten())
 
         if len(self.idx_queue) == distri_config.comm_checkpoint:
             self.communicate()

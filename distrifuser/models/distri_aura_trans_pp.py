@@ -7,6 +7,9 @@ from diffusers.models.transformers.auraflow_transformer_2d import (
 )
 
 from .base_model import BaseModel
+from distrifuser.modules.pp.attn import (
+    DistriSD3AttentionPP,
+)
 
 from distrifuser.modules.base_module import BaseModule
 from distrifuser.modules.pp.conv2d import DistriConv2dPP, DistriPatchEmbedPP
@@ -56,8 +59,6 @@ class DistriAuraTransPP(BaseModel):
         hidden_states: torch.FloatTensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.FloatTensor,
-        pooled_projections: torch.FloatTensor = None,
-        joint_attention_kwargs: dict[str, any] or None = None,
         return_dict: bool = True,  # yes
         record: bool = False,
     ):
@@ -81,7 +82,6 @@ class DistriAuraTransPP(BaseModel):
                     else timestep
                 )
                 encoder_hidden_states = encoder_hidden_states[batch_idx : batch_idx + 1]
-                pooled_projections = pooled_projections[batch_idx : batch_idx + 1]
 
             assert static_inputs["hidden_states"].shape == hidden_states.shape
             static_inputs["hidden_states"].copy_(hidden_states)
@@ -102,9 +102,6 @@ class DistriAuraTransPP(BaseModel):
             )
             static_inputs["encoder_hidden_states"].copy_(encoder_hidden_states)
 
-            assert static_inputs["pooled_projections"].shape == pooled_projections.shape
-            static_inputs["pooled_projections"].copy_(pooled_projections)
-
             if self.counter <= distri_config.warmup_steps:
                 graph_idx = 0
             elif self.counter == distri_config.warmup_steps + 1:
@@ -120,10 +117,9 @@ class DistriAuraTransPP(BaseModel):
                     hidden_states=hidden_states,
                     timestep=timestep,
                     encoder_hidden_states=encoder_hidden_states,
-                    pooled_projections=pooled_projections,
-                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=False,
                 )[0]
+
             elif (
                 distri_config.do_classifier_free_guidance and distri_config.split_batch
             ):
@@ -136,13 +132,10 @@ class DistriAuraTransPP(BaseModel):
                     else timestep
                 )
                 encoder_hidden_states = encoder_hidden_states[batch_idx : batch_idx + 1]
-                pooled_projections = pooled_projections[batch_idx : batch_idx + 1]
                 output = self.model(
                     hidden_states=hidden_states,
                     timestep=timestep,
                     encoder_hidden_states=encoder_hidden_states,
-                    pooled_projections=pooled_projections,
-                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=False,
                 )[0]
                 if self.output_buffer is None:
@@ -173,8 +166,6 @@ class DistriAuraTransPP(BaseModel):
                     hidden_states=hidden_states,
                     timestep=timestep,
                     encoder_hidden_states=encoder_hidden_states,
-                    pooled_projections=pooled_projections,
-                    joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=False,
                 )[0]
                 if self.output_buffer is None:
@@ -196,7 +187,6 @@ class DistriAuraTransPP(BaseModel):
                         "hidden_states": hidden_states,
                         "timestep": timestep,
                         "encoder_hidden_states": encoder_hidden_states,
-                        "pooled_projections": pooled_projections,
                     }
                 self.synchronize()
 

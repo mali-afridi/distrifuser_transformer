@@ -114,7 +114,7 @@ class DistriAuraPipeline:
 
         t = torch.zeros([batch_size], device=device, dtype=torch.long)
 
-        static_inputs["sample"] = latents
+        static_inputs["hidden_states"] = latents
         static_inputs["timestep"] = t
         static_inputs["encoder_hidden_states"] = prompt_embeds
 
