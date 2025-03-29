@@ -1,5 +1,5 @@
 import torch
-
+import time
 from distrifuser.pipelines import DistriSDXLPipeline
 from distrifuser.utils import DistriConfig
 
@@ -12,9 +12,21 @@ pipeline = DistriSDXLPipeline.from_pretrained(
 )
 
 pipeline.set_progress_bar_config(disable=distri_config.rank != 0)
+
+# pipeline.pipeline.unet.model = torch.compile(
+#     pipeline.pipeline.unet.model, mode="max-autotune-no-cudagraphs"
+# )
+print("Warmup")
+image = pipeline(
+    prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
+    generator=torch.Generator(device="cuda").manual_seed(233),
+).images[0]
+print("Inference")
+st = time.perf_counter()
 image = pipeline(
     prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
     generator=torch.Generator(device="cuda").manual_seed(233),
 ).images[0]
 if distri_config.rank == 0:
+    print("Inference Time:", time.perf_counter() - st)
     image.save("astronaut.png")
