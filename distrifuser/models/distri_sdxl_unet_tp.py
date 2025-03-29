@@ -2,7 +2,7 @@ import torch
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention import Attention, FeedForward
 from diffusers.models.resnet import ResnetBlock2D
-from diffusers.models.unet_2d_condition import UNet2DConditionOutput
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
 from torch import distributed as dist, nn
 
 from distrifuser.modules.base_module import BaseModule
@@ -26,13 +26,19 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                         wrapped_submodule = DistriAttentionTP(submodule, distri_config)
                         setattr(module, subname, wrapped_submodule)
                     elif isinstance(submodule, FeedForward):
-                        wrapped_submodule = DistriFeedForwardTP(submodule, distri_config)
+                        wrapped_submodule = DistriFeedForwardTP(
+                            submodule, distri_config
+                        )
                         setattr(module, subname, wrapped_submodule)
                     elif isinstance(submodule, ResnetBlock2D):
-                        wrapped_submodule = DistriResnetBlock2DTP(submodule, distri_config)
+                        wrapped_submodule = DistriResnetBlock2DTP(
+                            submodule, distri_config
+                        )
                         setattr(module, subname, wrapped_submodule)
                     elif isinstance(submodule, nn.Conv2d) and (
-                        subname == "conv_out" or "downsamplers" in name or "upsamplers" in name
+                        subname == "conv_out"
+                        or "downsamplers" in name
+                        or "upsamplers" in name
                     ):
                         wrapped_submodule = DistriConv2dTP(submodule, distri_config)
                         setattr(module, subname, wrapped_submodule)
@@ -72,17 +78,25 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         if distri_config.use_cuda_graph and not record:
             static_inputs = self.static_inputs
 
-            if distri_config.world_size > 1 and distri_config.do_classifier_free_guidance and distri_config.split_batch:
+            if (
+                distri_config.world_size > 1
+                and distri_config.do_classifier_free_guidance
+                and distri_config.split_batch
+            ):
                 assert b == 2
                 batch_idx = distri_config.batch_idx()
                 sample = sample[batch_idx : batch_idx + 1]
                 timestep = (
-                    timestep[batch_idx : batch_idx + 1] if torch.is_tensor(timestep) and timestep.ndim > 0 else timestep
+                    timestep[batch_idx : batch_idx + 1]
+                    if torch.is_tensor(timestep) and timestep.ndim > 0
+                    else timestep
                 )
                 encoder_hidden_states = encoder_hidden_states[batch_idx : batch_idx + 1]
                 if added_cond_kwargs is not None:
                     for k in added_cond_kwargs:
-                        added_cond_kwargs[k] = added_cond_kwargs[k][batch_idx : batch_idx + 1]
+                        added_cond_kwargs[k] = added_cond_kwargs[k][
+                            batch_idx : batch_idx + 1
+                        ]
 
             assert static_inputs["sample"].shape == sample.shape
             static_inputs["sample"].copy_(sample)
@@ -96,11 +110,17 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
             else:
                 for b in range(static_inputs["timestep"].shape[0]):
                     static_inputs["timestep"][b] = timestep
-            assert static_inputs["encoder_hidden_states"].shape == encoder_hidden_states.shape
+            assert (
+                static_inputs["encoder_hidden_states"].shape
+                == encoder_hidden_states.shape
+            )
             static_inputs["encoder_hidden_states"].copy_(encoder_hidden_states)
             if added_cond_kwargs is not None:
                 for k in added_cond_kwargs:
-                    assert static_inputs["added_cond_kwargs"][k].shape == added_cond_kwargs[k].shape
+                    assert (
+                        static_inputs["added_cond_kwargs"][k].shape
+                        == added_cond_kwargs[k].shape
+                    )
                     static_inputs["added_cond_kwargs"][k].copy_(added_cond_kwargs[k])
 
             graph_idx = 0
@@ -124,18 +144,24 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-            elif distri_config.do_classifier_free_guidance and distri_config.split_batch:
+            elif (
+                distri_config.do_classifier_free_guidance and distri_config.split_batch
+            ):
                 assert b == 2
                 batch_idx = distri_config.batch_idx()
                 sample = sample[batch_idx : batch_idx + 1]
                 timestep = (
-                    timestep[batch_idx : batch_idx + 1] if torch.is_tensor(timestep) and timestep.ndim > 0 else timestep
+                    timestep[batch_idx : batch_idx + 1]
+                    if torch.is_tensor(timestep) and timestep.ndim > 0
+                    else timestep
                 )
                 encoder_hidden_states = encoder_hidden_states[batch_idx : batch_idx + 1]
                 if added_cond_kwargs is not None:
                     new_added_cond_kwargs = {}
                     for k in added_cond_kwargs:
-                        new_added_cond_kwargs[k] = added_cond_kwargs[k][batch_idx : batch_idx + 1]
+                        new_added_cond_kwargs[k] = added_cond_kwargs[k][
+                            batch_idx : batch_idx + 1
+                        ]
                     added_cond_kwargs = new_added_cond_kwargs
                 output = self.model(
                     sample,
@@ -153,11 +179,16 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                     return_dict=False,
                 )[0]
                 if self.output_buffer is None:
-                    self.output_buffer = torch.empty((b, c, h, w), device=output.device, dtype=output.dtype)
+                    self.output_buffer = torch.empty(
+                        (b, c, h, w), device=output.device, dtype=output.dtype
+                    )
                 if self.buffer_list is None:
                     self.buffer_list = [torch.empty_like(output) for _ in range(2)]
                 dist.all_gather(
-                    self.buffer_list, output.contiguous(), group=distri_config.split_group(), async_op=False
+                    self.buffer_list,
+                    output.contiguous(),
+                    group=distri_config.split_group(),
+                    async_op=False,
                 )
                 torch.cat(self.buffer_list, dim=0, out=self.output_buffer)
                 output = self.output_buffer

@@ -1,5 +1,7 @@
 import torch.cuda
-from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D, USE_PEFT_BACKEND
+from diffusers.models.resnet import ResnetBlock2D
+from diffusers.models.downsampling import Downsample2D
+from diffusers.models.upsampling import Upsample2D
 from torch import distributed as dist
 from torch import nn
 from torch.nn import functional as F
@@ -30,13 +32,19 @@ class DistriResnetBlock2DTP(BaseModule):
         )
         sharded_conv1.weight.data.copy_(
             module.conv1.weight.data[
-                distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                distri_config.split_idx() * mid_channels : (
+                    distri_config.split_idx() + 1
+                )
+                * mid_channels
             ]
         )
         if module.conv1.bias is not None:
             sharded_conv1.bias.data.copy_(
                 module.conv1.bias.data[
-                    distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                    distri_config.split_idx() * mid_channels : (
+                        distri_config.split_idx() + 1
+                    )
+                    * mid_channels
                 ]
             )
 
@@ -55,7 +63,11 @@ class DistriResnetBlock2DTP(BaseModule):
         )
         sharded_conv2.weight.data.copy_(
             module.conv2.weight.data[
-                :, distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                :,
+                distri_config.split_idx() * mid_channels : (
+                    distri_config.split_idx() + 1
+                )
+                * mid_channels,
             ]
         )
         if module.conv2.bias is not None:
@@ -73,13 +85,19 @@ class DistriResnetBlock2DTP(BaseModule):
         )
         sharded_time_emb_proj.weight.data.copy_(
             module.time_emb_proj.weight.data[
-                distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                distri_config.split_idx() * mid_channels : (
+                    distri_config.split_idx() + 1
+                )
+                * mid_channels
             ]
         )
         if module.time_emb_proj.bias is not None:
             sharded_time_emb_proj.bias.data.copy_(
                 module.time_emb_proj.bias.data[
-                    distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                    distri_config.split_idx() * mid_channels : (
+                        distri_config.split_idx() + 1
+                    )
+                    * mid_channels
                 ]
             )
 
@@ -94,12 +112,18 @@ class DistriResnetBlock2DTP(BaseModule):
         if module.norm2.affine:
             sharded_norm2.weight.data.copy_(
                 module.norm2.weight.data[
-                    distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                    distri_config.split_idx() * mid_channels : (
+                        distri_config.split_idx() + 1
+                    )
+                    * mid_channels
                 ]
             )
             sharded_norm2.bias.data.copy_(
                 module.norm2.bias.data[
-                    distri_config.split_idx() * mid_channels : (distri_config.split_idx() + 1) * mid_channels
+                    distri_config.split_idx() * mid_channels : (
+                        distri_config.split_idx() + 1
+                    )
+                    * mid_channels
                 ]
             )
 
@@ -186,13 +210,20 @@ class DistriResnetBlock2DTP(BaseModule):
             groups=module.conv2.groups,
         )
 
-        dist.all_reduce(hidden_states, op=dist.ReduceOp.SUM, group=distri_config.batch_group, async_op=False)
+        dist.all_reduce(
+            hidden_states,
+            op=dist.ReduceOp.SUM,
+            group=distri_config.batch_group,
+            async_op=False,
+        )
         if module.conv2.bias is not None:
             hidden_states = hidden_states + module.conv2.bias.view(1, -1, 1, 1)
 
         if module.conv_shortcut is not None:
             input_tensor = (
-                module.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
+                module.conv_shortcut(input_tensor, scale)
+                if not USE_PEFT_BACKEND
+                else self.conv_shortcut(input_tensor)
             )
 
         output_tensor = (input_tensor + hidden_states) / module.output_scale_factor
