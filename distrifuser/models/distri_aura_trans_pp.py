@@ -9,9 +9,10 @@ from diffusers.models.transformers.auraflow_transformer_2d import (
 from .base_model import BaseModel
 
 from distrifuser.modules.base_module import BaseModule
-from distrifuser.modules.pp.conv2d import DistriConv2dPP
+from distrifuser.modules.pp.conv2d import DistriConv2dPP, DistriPatchEmbedPP
 from distrifuser.modules.pp.groupnorm import DistriGroupNorm
 from ..utils import DistriConfig
+from diffusers.models.embeddings import PatchEmbed
 
 
 class DistriAuraTransPP(BaseModel):
