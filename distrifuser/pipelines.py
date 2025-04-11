@@ -1,5 +1,9 @@
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline, UNet2DConditionModel
+from diffusers import (
+    StableDiffusionPipeline,
+    StableDiffusionXLPipeline,
+    UNet2DConditionModel,
+)
 
 from .models.distri_sdxl_unet_pp import DistriUNetPP
 from .models.distri_sdxl_unet_tp import DistriUNetTP
@@ -8,7 +12,9 @@ from .utils import DistriConfig, PatchParallelismCommManager
 
 
 class DistriSDXLPipeline:
-    def __init__(self, pipeline: StableDiffusionXLPipeline, module_config: DistriConfig):
+    def __init__(
+        self, pipeline: StableDiffusionXLPipeline, module_config: DistriConfig
+    ):
         self.pipeline = pipeline
         self.distri_config = module_config
 
@@ -93,7 +99,13 @@ class DistriSDXLPipeline:
 
         num_channels_latents = pipeline.unet.config.in_channels
         latents = pipeline.prepare_latents(
-            batch_size, num_channels_latents, height, width, prompt_embeds.dtype, device, None
+            batch_size,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            None,
         )
 
         # 7. Prepare added time ids & embeddings
@@ -150,7 +162,11 @@ class DistriSDXLPipeline:
             if distri_config.parallelism == "naive_patch":
                 counters = [0, 1]
             elif distri_config.parallelism == "patch":
-                counters = [0, distri_config.warmup_steps + 1, distri_config.warmup_steps + 2]
+                counters = [
+                    0,
+                    distri_config.warmup_steps + 1,
+                    distri_config.warmup_steps + 2,
+                ]
             elif distri_config.parallelism == "tensor":
                 counters = [0]
             else:
@@ -159,7 +175,9 @@ class DistriSDXLPipeline:
                 graph = torch.cuda.CUDAGraph()
                 with torch.cuda.graph(graph):
                     pipeline.unet.set_counter(counter)
-                    output = pipeline.unet(**static_inputs, return_dict=False, record=True)[0]
+                    output = pipeline.unet(
+                        **static_inputs, return_dict=False, record=True
+                    )[0]
                     static_outputs.append(output)
                 cuda_graphs.append(graph)
             pipeline.unet.setup_cuda_graph(static_outputs, cuda_graphs)
@@ -179,7 +197,9 @@ class DistriSDPipeline:
     @staticmethod
     def from_pretrained(distri_config: DistriConfig, **kwargs):
         device = distri_config.device
-        pretrained_model_name_or_path = kwargs.pop("pretrained_model_name_or_path", "CompVis/stable-diffusion-v1-4")
+        pretrained_model_name_or_path = kwargs.pop(
+            "pretrained_model_name_or_path", "CompVis/stable-diffusion-v1-4"
+        )
         torch_dtype = kwargs.pop("torch_dtype", torch.float16)
         unet = UNet2DConditionModel.from_pretrained(
             pretrained_model_name_or_path, torch_dtype=torch_dtype, subfolder="unet"
@@ -246,7 +266,13 @@ class DistriSDPipeline:
 
         num_channels_latents = pipeline.unet.config.in_channels
         latents = pipeline.prepare_latents(
-            batch_size, num_channels_latents, height, width, prompt_embeds.dtype, device, None
+            batch_size,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            None,
         )
 
         prompt_embeds = prompt_embeds.to(device)
@@ -282,7 +308,11 @@ class DistriSDPipeline:
             if distri_config.parallelism == "naive_patch":
                 counters = [0, 1]
             elif distri_config.parallelism == "patch":
-                counters = [0, distri_config.warmup_steps + 1, distri_config.warmup_steps + 2]
+                counters = [
+                    0,
+                    distri_config.warmup_steps + 1,
+                    distri_config.warmup_steps + 2,
+                ]
             elif distri_config.parallelism == "tensor":
                 counters = [0]
             else:
@@ -291,7 +321,9 @@ class DistriSDPipeline:
                 graph = torch.cuda.CUDAGraph()
                 with torch.cuda.graph(graph):
                     pipeline.unet.set_counter(counter)
-                    output = pipeline.unet(**static_inputs, return_dict=False, record=True)[0]
+                    output = pipeline.unet(
+                        **static_inputs, return_dict=False, record=True
+                    )[0]
                     static_outputs.append(output)
                 cuda_graphs.append(graph)
             pipeline.unet.setup_cuda_graph(static_outputs, cuda_graphs)
